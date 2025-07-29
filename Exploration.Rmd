@@ -1,0 +1,59 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+
+```{r}
+source("Sampling_algorithm.r")
+source("Johnson_SU_density.r")
+source("Online update moments.r")
+source("Johnson transformation with online update moment method.r")
+source("Johnson transformation with MLE method.r")
+source("Johnson transformation with perfect map.r")
+```
+
+```{r comparison}
+library(coda)
+library(moments)
+library(nleqslv)
+# set the parameter
+lambda_john <- 1
+delta_john <- 0.5
+xi_john <-  1
+gamma_john <- 1
+nits = 50000
+pre_nits = 2000
+h = 0.9
+x_curr = 0
+
+# define the density function with one parameter
+d_logpi <- function(x) d_logJohnson (x,lambda_john,delta_john,xi_john,gamma_john)
+log_pi <- function(x) log_dJohnson (x,lambda_john,delta_john,xi_john,gamma_john)
+
+# Sampling by different algorithm
+t1 <- Sys.time()
+sample_MALA <- Adaptive_MALA(d_logpi,log_pi,nits, h,x_curr)
+t2 <- Sys.time()
+sample_RWM <- Adaptive_RWM(log_pi,nits,h,x_curr)
+t3 <- Sys.time()
+trans_john <- Transformation_johnsonsu_mom(log_pi,d_logpi,nits,x_curr)
+t4 <- Sys.time()
+perfect_john <- Perfect_map_johnsonsu(log_pi,xi_john,lambda_john,delta_john,gamma_john)
+t5 <- Sys.time()
+pre_samples <- Adaptive_RWM(log_pi,pre_nits,h,x_curr)$x_store
+trans_john_mle <- Sampling_trsanformation_johnsonsu_MLE (pre_samples,log_pi,nits,method = "MLE",x_curr = x_curr)
+t6 <- Sys.time()
+
+# print the ESS per sec
+cat("the ESS per sec of MALA is: ",effectiveSize(sample_MALA$x_store) / as.numeric(t2- t1,units = "secs"),"\n")
+cat("the ESS per sec of RWM is: ",effectiveSize(sample_RWM$x_store) / as.numeric(t3 - t2,units = "secs"),"\n")
+cat("the ESS per sec of transformation method with Johnson SU (online update moment method) is: ",effectiveSize(trans_john$samples_x) / as.numeric(t4 - t3,units = "secs"),"\n")
+cat('The ESS per sec of transformation method with Johnson SU (MLE method) is: ', effectiveSize(trans_john_mle$samples_x) / as.numeric(t6 - t5,units = "secs"),"\n")
+cat("the ESS per sec of Perfect transformation is: ",effectiveSize(perfect_john$samples_x)/ as.numeric(t5 - t4,units = "secs"),"\n")
+
+
+```
+
