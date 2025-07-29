@@ -127,13 +127,13 @@ compute_moments <- function(samples){
   return(rbind(mu,variance,skew,kurt))
 }
 # generate the perfect samples which exactly follows the target distribution
-perfect_samples = lambda_john*sinh((rnorm(nits)-gamma_john)/delta_john)+xi_john
+perfect_samples = lambda_john*sinh((rnorm(50*nits)-gamma_john)/delta_john)+xi_john
 # calculate the momenrs
 perfect_moment <- compute_moments(as.matrix(perfect_samples))
 
 # create a matrix to store the estimation error
 moment_error <- matrix(ncol = 4,nrow = 5)
-colnames(moment_error) <- c("mean","variance","skew","kurtosis")
+colnames(moment_error) <- c("mean_diff","variance_diff","skew_diff","kurtosis_diff")
 rownames(moment_error) <- c("Adaptive MALA","Adaptive RWM","Johnson moment","Johnson MLE","Johnson perfect")
 # calculate the difference between the moment from perfect samples and samples got by different sampling algorithm
 moment_error["Adaptive MALA",] <- t(compute_moments(sample_MALA$x_store) - perfect_moment)
