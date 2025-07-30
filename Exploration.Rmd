@@ -15,6 +15,95 @@ source("Johnson transformation with MLE method.r")
 source("Johnson transformation with perfect map.r")
 ```
 
+```{r comparison after tunning parameters}
+library(coda)
+library(moments)
+library(nleqslv)
+# set the parameter
+lambda_john <- 1
+delta_john <- 0.5
+xi_john <-  1
+gamma_john <- 1
+nits = 50000
+pre_nits = 2000
+h = 0.9
+x_curr = 0
+c = 500
+delta = 0.5
+t1_john = 3000
+
+# define the density function with one parameter
+d_logpi <- function(x) d_logJohnson (x,lambda_john,delta_john,xi_john,gamma_john)
+log_pi <- function(x) log_dJohnson (x,lambda_john,delta_john,xi_john,gamma_john)
+
+# Sampling by different algorithm
+t1 <- Sys.time()
+sample_MALA <- Adaptive_MALA(d_logpi,log_pi,nits, h,x_curr)
+t2 <- Sys.time()
+sample_RWM <- Adaptive_RWM(log_pi,nits,h,x_curr)
+t3 <- Sys.time()
+trans_john <- Transformation_johnsonsu_mom(log_pi,nits,x_curr,t1 = t1_john,delta = delta,c = c)
+t4 <- Sys.time()
+perfect_john <- Perfect_map_johnsonsu(log_pi,xi_john,lambda_john,delta_john,gamma_john)
+t5 <- Sys.time()
+pre_samples <- Adaptive_RWM(log_pi,pre_nits,h,x_curr)$x_store
+trans_john_mle <- Sampling_trsanformation_johnsonsu_MLE (pre_samples,log_pi,nits,method = "MLE",x_curr = x_curr)
+t6 <- Sys.time()
+
+# print the ESS per sec
+cat("the ESS per sec of MALA is: ",effectiveSize(sample_MALA$x_store) / as.numeric(t2- t1,units = "secs"),"\n")
+cat("the ESS per sec of RWM is: ",effectiveSize(sample_RWM$x_store) / as.numeric(t3 - t2,units = "secs"),"\n")
+cat("the ESS per sec of transformation method with Johnson SU (online update moment method) is: ",effectiveSize(trans_john$samples_x) / as.numeric(t4 - t3,units = "secs"),"\n")
+cat('The ESS per sec of transformation method with Johnson SU (MLE method) is: ', effectiveSize(trans_john_mle$samples_x) / as.numeric(t6 - t5,units = "secs"),"\n")
+cat("the ESS per sec of Perfect transformation is: ",effectiveSize(perfect_john$samples_x)/ as.numeric(t5 - t4,units = "secs"),"\n")
+
+
+# compare the estimation precision
+#define a function to compute the sample moments
+compute_moments <- function(samples){
+  mu <- apply(samples,2,mean)
+  variance <- apply(samples,2,var)
+  skew <- apply(samples,2,skewness)
+  kurt <- apply(samples,2,kurtosis)
+  return(rbind(mu,variance,skew,kurt))
+}
+
+
+# calculate the thoretical moments
+mean_theory <- xi_john - lambda_john * exp(delta_john^-2 / 2) * sinh(gamma_john / delta_john)
+var_theory <- (lambda_john^2 / 2) * (exp(delta_john^-2) - 1) *
+  (exp(delta_john^-2) * cosh(2 * gamma_john / delta_john) + 1)
+
+skew_theory <- -(lambda_john^3 * exp(-delta_john^-2/2) * (exp(delta_john^-2) - 1)^2 *
+                   ((exp(delta_john^-2) * (exp(delta_john^-2) + 2)) * sinh(3 * gamma_john / delta_john) +
+                      3 * sinh(2 * gamma_john / delta_john))) / 4
+
+term <- exp(delta_john^-2)
+K1 <- term^2 * (term^4 + 2 * term^3 + 3 * term^2 - 3) * cosh(4 * gamma_john / delta_john)
+K2 <- 4 * term^2 * (term + 2) * cosh(2 * gamma_john / delta_john)
+K3 <- 3 * (2 * term + 1)
+
+kurt_theory <- (lambda_john^4 * (term - 1)^2 * (K1 + K2 + K3)) / (8 * (var_theory)^2)
+theory_moment <- rbind(mean_theory,var_theory,skew_theory,kurt_theory)
+
+# generate the perfect samples which exactly follows the target distribution
+perfect_samples = lambda_john*sinh((rnorm(nits)-gamma_john)/delta_john)+xi_john
+
+# create a matrix to store the estimation error
+moment_error <- matrix(ncol = 4,nrow = 6)
+colnames(moment_error) <- c("mean_diff","variance_diff","skew_diff","kurtosis_diff")
+rownames(moment_error) <- c("Perfect sample","Adaptive MALA","Adaptive RWM","Johnson moment","Johnson MLE","Johnson perfect")
+# calculate the difference between the moment from perfect samples and samples got by different sampling algorithm
+moment_error["Perfect sample",] <- t(compute_moments(as.matrix(perfect_samples))-theory_moment)
+moment_error["Adaptive MALA",] <- t(compute_moments(sample_MALA$x_store) - theory_moment)
+moment_error["Adaptive RWM",] <- t(compute_moments(sample_RWM$x_store) - theory_moment)
+moment_error["Johnson moment",] <- t(compute_moments(trans_john$samples_x) - theory_moment)
+moment_error["Johnson MLE",] <- t(compute_moments(as.matrix(trans_john_mle$samples_x)) - theory_moment)
+moment_error["Johnson perfect",] <- t(compute_moments(perfect_john$samples_x) -theory_moment)
+
+# print the matrix
+moment_error
+```
 
 ```{r exploration the effect of each parameter}
 nits = 50000
@@ -74,75 +163,5 @@ plot(1:nits,s$kurt_store,type = "l",xlab = "iteration",ylab = "kurtosis")
 ```
 
 
-```{r comparison after tunning parameters}
-library(coda)
-library(moments)
-library(nleqslv)
-# set the parameter
-lambda_john <- 1
-delta_john <- 0.5
-xi_john <-  1
-gamma_john <- 1
-nits = 50000
-pre_nits = 2000
-h = 0.9
-x_curr = 0
-c = 500
-delta = 0.5
-t1_john = 3000
 
-# define the density function with one parameter
-d_logpi <- function(x) d_logJohnson (x,lambda_john,delta_john,xi_john,gamma_john)
-log_pi <- function(x) log_dJohnson (x,lambda_john,delta_john,xi_john,gamma_john)
-
-# Sampling by different algorithm
-t1 <- Sys.time()
-sample_MALA <- Adaptive_MALA(d_logpi,log_pi,nits, h,x_curr)
-t2 <- Sys.time()
-sample_RWM <- Adaptive_RWM(log_pi,nits,h,x_curr)
-t3 <- Sys.time()
-trans_john <- Transformation_johnsonsu_mom(log_pi,nits,x_curr,t1 = t1_john,delta = delta,c = c)
-t4 <- Sys.time()
-perfect_john <- Perfect_map_johnsonsu(log_pi,xi_john,lambda_john,delta_john,gamma_john)
-t5 <- Sys.time()
-pre_samples <- Adaptive_RWM(log_pi,pre_nits,h,x_curr)$x_store
-trans_john_mle <- Sampling_trsanformation_johnsonsu_MLE (pre_samples,log_pi,nits,method = "MLE",x_curr = x_curr)
-t6 <- Sys.time()
-
-# print the ESS per sec
-cat("the ESS per sec of MALA is: ",effectiveSize(sample_MALA$x_store) / as.numeric(t2- t1,units = "secs"),"\n")
-cat("the ESS per sec of RWM is: ",effectiveSize(sample_RWM$x_store) / as.numeric(t3 - t2,units = "secs"),"\n")
-cat("the ESS per sec of transformation method with Johnson SU (online update moment method) is: ",effectiveSize(trans_john$samples_x) / as.numeric(t4 - t3,units = "secs"),"\n")
-cat('The ESS per sec of transformation method with Johnson SU (MLE method) is: ', effectiveSize(trans_john_mle$samples_x) / as.numeric(t6 - t5,units = "secs"),"\n")
-cat("the ESS per sec of Perfect transformation is: ",effectiveSize(perfect_john$samples_x)/ as.numeric(t5 - t4,units = "secs"),"\n")
-
-
-# compare the estimation precision
-#define a function to compute the sample moments
-compute_moments <- function(samples){
-  mu <- apply(samples,2,mean)
-  variance <- apply(samples,2,var)
-  skew <- apply(samples,2,skewness)
-  kurt <- apply(samples,2,kurtosis)
-  return(rbind(mu,variance,skew,kurt))
-}
-# generate the perfect samples which exactly follows the target distribution
-perfect_samples = lambda_john*sinh((rnorm(50*nits)-gamma_john)/delta_john)+xi_john
-# calculate the momenrs
-perfect_moment <- compute_moments(as.matrix(perfect_samples))
-
-# create a matrix to store the estimation error
-moment_error <- matrix(ncol = 4,nrow = 5)
-colnames(moment_error) <- c("mean_diff","variance_diff","skew_diff","kurtosis_diff")
-rownames(moment_error) <- c("Adaptive MALA","Adaptive RWM","Johnson moment","Johnson MLE","Johnson perfect")
-# calculate the difference between the moment from perfect samples and samples got by different sampling algorithm
-moment_error["Adaptive MALA",] <- t(compute_moments(sample_MALA$x_store) - perfect_moment)
-moment_error["Adaptive RWM",] <- t(compute_moments(sample_RWM$x_store) - perfect_moment)
-moment_error["Johnson moment",] <- t(compute_moments(trans_john$samples_x) - perfect_moment)
-moment_error["Johnson MLE",] <- t(compute_moments(as.matrix(trans_john_mle$samples_x)) - perfect_moment)
-moment_error["Johnson perfect",] <- t(compute_moments(perfect_john$samples_x) - perfect_moment)
-
-# print the matrix
-moment_error
-```
 
