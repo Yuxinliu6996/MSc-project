@@ -68,22 +68,22 @@ compute_moments <- function(samples){
   return(rbind(mu,variance,skew,kurt))
 }
 
-
+delta_john <-0.5
 # calculate the thoretical moments
 mean_theory <- xi_john - lambda_john * exp(delta_john^-2 / 2) * sinh(gamma_john / delta_john)
 var_theory <- (lambda_john^2 / 2) * (exp(delta_john^-2) - 1) *
   (exp(delta_john^-2) * cosh(2 * gamma_john / delta_john) + 1)
 
-skew_theory <- -(lambda_john^3 * exp(-delta_john^-2/2) * (exp(delta_john^-2) - 1)^2 *
+skew_theory <- -(lambda_john^3 * sqrt(exp(-delta_john^-2)) * (exp(delta_john^-2) - 1)^2 *
                    ((exp(delta_john^-2) * (exp(delta_john^-2) + 2)) * sinh(3 * gamma_john / delta_john) +
-                      3 * sinh(2 * gamma_john / delta_john))) / 4
+                      3 * sinh(gamma_john / delta_john))) / 4*(var_theory)^1.5
 
 term <- exp(delta_john^-2)
 K1 <- term^2 * (term^4 + 2 * term^3 + 3 * term^2 - 3) * cosh(4 * gamma_john / delta_john)
-K2 <- 4 * term^2 * (term + 2) * cosh(2 * gamma_john / delta_john)
+K2 <- 4 * term^2 * (term + 2) * cosh(3 * gamma_john / delta_john)
 K3 <- 3 * (2 * term + 1)
 
-kurt_theory <- (lambda_john^4 * (term - 1)^2 * (K1 + K2 + K3)) / (8 * (var_theory)^2)
+kurt_theory <- (lambda_john^4 * (term - 1)^2 * (K1 + K2 + K3)) / (8 * (var_theory)^2) +3
 theory_moment <- rbind(mean_theory,var_theory,skew_theory,kurt_theory)
 
 # generate the perfect samples which exactly follows the target distribution
@@ -103,6 +103,34 @@ moment_error["Johnson perfect",] <- t(compute_moments(perfect_john$samples_x) -t
 
 # print the matrix
 moment_error
+
+nits_values <- seq(5e4,5e6,3e4)
+perfect_error <- matrix(ncol = 5,nrow = length(nits_values))
+colnames(perfect_error) <- c("nits","mean_diff","variance_diff","skew_diff","kurtosis_diff")
+perfect_error[,"nits"] <- nits_values
+for ( i in 1:length(nits_values)){
+  print(i)
+  nits <- nits_values[i]
+  perfect_samples = lambda_john*sinh((rnorm(nits)-gamma_john)/delta_john)+xi_john
+  perfect_error[i,2:5] <- t(compute_moments(as.matrix(perfect_samples))-theory_moment)
+}
+library(ggplot2)
+library(reshape2)
+
+# 转换数据格式
+df <- as.data.frame(perfect_error)
+df_long <- melt(df, id.vars = "nits", 
+                measure.vars = c("mean_diff", "variance_diff", "skew_diff", "kurtosis_diff"))
+
+# 绘图
+ggplot(df_long, aes(x = nits, y = value)) +
+  geom_line(color = "blue", size = 1) +
+  facet_wrap(~variable, scales = "free_y") +
+  labs(title = "Moments difference vs nits",
+       x = "nits",
+       y = "Difference") +
+  theme_minimal()
+
 ```
 
 ```{r exploration the effect of each parameter}
@@ -111,7 +139,7 @@ x_curr = 0
 ESS_t0  = ESS_c  = ESS_delta = ESS_t1 =  NULL
 
 # set the parameter values
-t0_values <- seq(2000,30000,3000)
+t0_values <- seq(4,20000,200)
 c_values <- c(1,10,50,100,300,500,1000)
 delta_values <- c(0.5, 0.6, 0.7, 0.8, 0.9, 1)
 t1_values <- c(1,5,10,50,100,500,1000,2000,3000,5000)
@@ -120,9 +148,10 @@ t1_values <- c(1,5,10,50,100,500,1000,2000,3000,5000)
 # calculate the ESS at different parameter values
 for (i in (1:length(t0_values))){
   t0 <- t0_values[i]
-  s <- Transformation_johnsonsu_mom (log_pi,nits,x_curr,t0 = t0)
+  s <- Transformation_johnsonsu_mom (log_pi,nits,x_curr,t0 = t0, c= 500,delta = 0.55,t1= 3000)
   ESS_t0[i] <- effectiveSize(s$samples_x)
 }
+
 
 for (i in (1:length(c_values))){
   print(i)
